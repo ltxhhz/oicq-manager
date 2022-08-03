@@ -2,6 +2,7 @@ import { EventEmitter } from "events";
 import { Client, createClient } from "oicq"
 import type oicq from 'oicq'
 import { EventMap } from "./events";
+import type { Plugin } from './plugin'
 
 export interface ClientList {
   [uin: number]: Client
@@ -11,34 +12,34 @@ export interface ClientList {
 
 // }
 
-export enum Permissions {
-  /** [所有权限] */
-  all,
-  /** [敏感]取Cookies */
-  getCookies,
-  getRecord,
-  sendGroupMsg,
-  sendDiscussMsg,
-  sendPrivateMsg,
-  sendLike,
-  setGroupKick,
-  setGroupBan,
-  setGroupAdmin,
-  setGroupWholeBan,
-  setGroupAnonymousBan,
-  setGroupAnonymous,
-  setGroupCard,
-  setGroupLeave,
-  setGroupSpecialTitle,
-  getGroupMemberInfo,
-  getStrangerInfo,
-  setDiscussLeave,
-  setFriendAddRequest,
-  setGroupAddRequest,
-  getGroupMemberList,
-  getGroupList,
-  deleteMsg
-}
+// export enum Permissions {
+//   /** [所有权限] */
+//   all,
+//   /** [敏感]取Cookies */
+//   getCookies,
+//   getRecord,
+//   sendGroupMsg,
+//   sendDiscussMsg,
+//   sendPrivateMsg,
+//   sendLike,
+//   setGroupKick,
+//   setGroupBan,
+//   setGroupAdmin,
+//   setGroupWholeBan,
+//   setGroupAnonymousBan,
+//   setGroupAnonymous,
+//   setGroupCard,
+//   setGroupLeave,
+//   setGroupSpecialTitle,
+//   getGroupMemberInfo,
+//   getStrangerInfo,
+//   setDiscussLeave,
+//   setFriendAddRequest,
+//   setGroupAddRequest,
+//   getGroupMemberList,
+//   getGroupList,
+//   deleteMsg
+// }
 // [ // 应用权限（发布前请删除无用权限）
 //   20,  //[敏感]取Cookies    getCookies / getCsrfToken
 //   30,  //接收语音            getRecord
@@ -65,12 +66,7 @@ export enum Permissions {
 //   180 //撤回消息            deleteMsg
 // ]
 
-export interface Plugin {
-  id: string,
-  label: string,
-  permissions: Permissions[],
-  function: (bot: Client) => void
-}
+
 
 export interface PluginList {
   [id: string]: Plugin
@@ -215,7 +211,11 @@ export class Manager extends EventEmitter {
       }
       this.pluginList[plugin] ||= module
     } else {//检查属性
-      this.pluginList[plugin.id] ||= plugin
+      if (plugin.id && plugin.label && !!plugin.function) {
+        this.pluginList[plugin.id] ||= plugin
+      } else {
+        this.emit('plugin-install-error', plugin.id, new Error('The provided plugin has incomplete properties'))
+      }
     }
     return this
   }
