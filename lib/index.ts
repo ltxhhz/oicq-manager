@@ -214,7 +214,7 @@ export class Manager extends EventEmitter {
         return this
       }
       this.pluginList[plugin] ||= module
-    } else {
+    } else {//检查属性
       this.pluginList[plugin.id] ||= plugin
     }
     return this
