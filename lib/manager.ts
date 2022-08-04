@@ -3,10 +3,12 @@ import { Client, createClient } from "oicq"
 import type oicq from 'oicq'
 import { EventMap } from "./events";
 import type { Plugin } from './plugin'
+import prompt from "prompt";
 
 export interface ClientList {
   [uin: number]: Client
 }
+//#region 
 // export const PermissionList = {
 //   getCookies: '[敏感]获取cookie',
 
@@ -65,7 +67,7 @@ export interface ClientList {
 //   161, //取群列表            getGroupList
 //   180 //撤回消息            deleteMsg
 // ]
-
+//#endregion
 
 
 export interface PluginList {
@@ -85,8 +87,8 @@ export interface LoginParams {
 }
 
 export type LoginResult = { type: 'qrcode', login: () => Promise<LoginResult>, image: Buffer } |
-{ type: 'slider', login: (e: LoginParams) => Promise<LoginResult>, url: string } |
-{ type: 'device', login: (e: LoginParams) => Promise<LoginResult>, url: string, phone: string } |
+{ type: 'slider', login: (e?: LoginParams) => Promise<LoginResult>, url: string } |
+{ type: 'device', login: (e?: LoginParams) => Promise<LoginResult>, sendSms: () => void, url: string, phone: string } |
 { type: 'error', code: number, message: string } |
 { type: 'ok' }
 
@@ -98,6 +100,7 @@ export class Manager extends EventEmitter {
     super();
 
   }
+  /**创建一个实例并尝试登录 */
   login(account: ManagerAccount): Promise<LoginResult> {
     let bot = createClient(account.uin, account.oicqConfig)
     return new Promise((resolve, reject) => {
@@ -123,6 +126,7 @@ export class Manager extends EventEmitter {
           login: (e) => {
             return this._login(bot, e)
           },
+          sendSms: bot.sendSmsCode,
           ...e
         })
       }).once('system.login.error', e => {
@@ -172,6 +176,7 @@ export class Manager extends EventEmitter {
           login: (e) => {
             return this._login(bot, e)
           },
+          sendSms: bot.sendSmsCode,
           ...e
         })
       }).once('system.login.error', e => {
@@ -218,6 +223,35 @@ export class Manager extends EventEmitter {
       }
     }
     return this
+  }
+  /** 辅助登录函数 */
+  static async auxiliaryVerification(e: LoginResult): Promise<boolean> {
+    prompt.start()
+    let login: string
+    switch (e.type) {
+      case 'ok':
+        return true
+      case 'device':
+        ({ login } = await prompt.get({ name: 'login', description: '使用url验证则留空，使用短信验证则输入任意值' }));
+        if (login) {
+          e.sendSms()
+          let { sms } = await prompt.get({ name: 'sms', description: '输入短信收到的验证码', required: true })
+          return e.login({ sms: sms as string }).then(e => Manager.auxiliaryVerification(e))
+        } else {
+          return await e.login().then(e => Manager.auxiliaryVerification(e))
+        }
+      case 'qrcode':
+        ({ login } = await prompt.get({ name: 'login', description: '扫码后按 Enter 继续登录' }));
+        return await e.login().then(e => Manager.auxiliaryVerification(e))
+      case 'slider':
+        ({ login } = await prompt.get({ name: 'login', description: '输入滑动验证码的 ticket 继续登录', required: true }));
+        return await e.login({ slider: login }).then(e => Manager.auxiliaryVerification(e))
+      case 'error':
+        console.log('无法处理的登录错误', e);
+        return false
+      default:
+        return false
+    }
   }
 }
 
