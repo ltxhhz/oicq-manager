@@ -92,6 +92,8 @@ export type LoginResult = { type: 'qrcode', login: () => Promise<LoginResult>, i
 { type: 'error', code: number, message: string } |
 { type: 'ok' }
 
+export interface PluginAllowedEvents extends Omit<EventMap, 'system.login.qrcode' | 'system.login.slider' | 'system.login.device' | 'system.login.error'> {}
+
 export class Manager extends EventEmitter {
   readonly clientList: ClientList = {}
   readonly pluginList: PluginList = {}
@@ -215,8 +217,8 @@ export class Manager extends EventEmitter {
         return this
       }
       this.pluginList[plugin] ||= module
-    } else {//检查属性
-      if (plugin.id && plugin.label && !!plugin.function) {
+    } else { //检查属性
+      if (plugin.id && plugin.label && !!plugin.install) {
         this.pluginList[plugin.id] ||= plugin
       } else {
         this.emit('plugin-install-error', plugin.id, new Error('The provided plugin has incomplete properties'))
@@ -247,7 +249,7 @@ export class Manager extends EventEmitter {
         ({ login } = await prompt.get({ name: 'login', description: '输入滑动验证码的 ticket 继续登录', required: true }));
         return await e.login({ slider: login }).then(e => Manager.auxiliaryVerification(e))
       case 'error':
-        console.log('无法处理的登录错误', e);
+        console.log('未知的登录错误', e);
         return false
       default:
         return false

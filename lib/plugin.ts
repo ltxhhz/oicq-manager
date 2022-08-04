@@ -12,13 +12,13 @@ export class Plugin {
   id: string
   /** 显示的名字 */
   label: string
-  /** 功能函数 */
-  function: (bot: Client) => void
-  constructor({ id, label, function: func }: Plugin) {
-    if (id && label && func) {
+  /** 插件安装函数 */
+  install: (bot: Client) => void
+  constructor({ id, label, install }: Plugin) {
+    if (id && label && install) {
       this.id = id
       this.label = label
-      this.function = func
+      this.install = install
     } else {
       throw new Error('Plugin failed to initialize because the constructor received an undefined value')
     }
