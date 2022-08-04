@@ -69,9 +69,22 @@ export interface ClientList {
 // ]
 //#endregion
 
+export type ExcludeLoginEvents<T = any> = Omit<oicq.EventMap<T>, 'system.login.qrcode' | 'system.login.slider' | 'system.login.device' | 'system.login.error'>
+
+type ExcludeLoginEventNames = keyof ExcludeLoginEvents
+
+export type PluginAllowedEvents<T = any> = {
+  [k in ExcludeLoginEventNames]: ExcludeLoginEvents<T>[k] | ExcludeLoginEvents<T>[k][]
+}
+
+export interface ManagerPlugin extends Plugin {
+  error?: boolean,
+  listeners: Partial<PluginAllowedEvents>,
+  uninstall: (bot: Client) => void
+}
 
 export interface PluginList {
-  [id: string]: Plugin
+  [id: string]: ManagerPlugin
 }
 
 export interface ManagerAccount {
@@ -92,15 +105,12 @@ export type LoginResult = { type: 'qrcode', login: () => Promise<LoginResult>, i
 { type: 'error', code: number, message: string } |
 { type: 'ok' }
 
-export interface PluginAllowedEvents extends Omit<EventMap, 'system.login.qrcode' | 'system.login.slider' | 'system.login.device' | 'system.login.error'> {}
-
 export class Manager extends EventEmitter {
   readonly clientList: ClientList = {}
   readonly pluginList: PluginList = {}
 
   constructor() {
     super();
-
   }
   /**创建一个实例并尝试登录 */
   login(account: ManagerAccount): Promise<LoginResult> {
@@ -110,7 +120,7 @@ export class Manager extends EventEmitter {
         resolve({
           type: 'qrcode',
           login: () => {
-            return this._login(bot)
+            return this.#login(bot)
           },
           ...e
         })
@@ -118,7 +128,7 @@ export class Manager extends EventEmitter {
         resolve({
           type: 'slider',
           login: (e) => {
-            return this._login(bot, e)
+            return this.#login(bot, e)
           },
           ...e
         })
@@ -126,7 +136,7 @@ export class Manager extends EventEmitter {
         resolve({
           type: 'device',
           login: (e) => {
-            return this._login(bot, e)
+            return this.#login(bot, e)
           },
           sendSms: bot.sendSmsCode,
           ...e
@@ -145,7 +155,7 @@ export class Manager extends EventEmitter {
       }).login(account.pwd)
     })
   }
-  private _login(bot: Client, config?: LoginParams): Promise<LoginResult> {
+  #login(bot: Client, config?: LoginParams): Promise<LoginResult> {
     if (config?.slider) {
       console.log('提交划动验证码');
       bot.submitSlider(config.slider)
@@ -160,7 +170,7 @@ export class Manager extends EventEmitter {
         resolve({
           type: 'qrcode',
           login: () => {
-            return this._login(bot)
+            return this.#login(bot)
           },
           ...e
         })
@@ -168,7 +178,7 @@ export class Manager extends EventEmitter {
         resolve({
           type: 'slider',
           login: (e) => {
-            return this._login(bot, e)
+            return this.#login(bot, e)
           },
           ...e
         })
@@ -176,7 +186,7 @@ export class Manager extends EventEmitter {
         resolve({
           type: 'device',
           login: (e) => {
-            return this._login(bot, e)
+            return this.#login(bot, e)
           },
           sendSms: bot.sendSmsCode,
           ...e
@@ -209,7 +219,7 @@ export class Manager extends EventEmitter {
 
   use(plugin: string | Plugin): this {
     if (typeof plugin == 'string') {
-      let module
+      let module: Plugin
       try {
         module = require(plugin)
       } catch (error) {
@@ -226,6 +236,24 @@ export class Manager extends EventEmitter {
     }
     return this
   }
+
+  #usePlugin(plugin: Plugin): ManagerPlugin {
+    return {
+      uninstall: function (bot) {
+        for (const key in this.listeners) {
+          const ls = this.listeners[key as ExcludeLoginEventNames]
+          if (ls instanceof Array) {
+            ls.forEach(e => bot.off(key, e))
+          } else {
+            bot.off(key, ls!)
+          }
+        }
+      },
+      listeners: {},
+      ...plugin
+    }
+  }
+
   /** 辅助登录函数 */
   static async auxiliaryVerification(e: LoginResult): Promise<boolean> {
     prompt.start()
