@@ -4,6 +4,7 @@ import type oicq from 'oicq'
 import { EventMap } from "./events";
 import type { Plugin } from './plugin'
 import prompt from "prompt";
+import { forIn } from "lodash";
 
 export interface ClientList {
   [uin: number]: Client
@@ -69,18 +70,13 @@ export interface ClientList {
 // ]
 //#endregion
 
-export type ExcludeLoginEvents<T = any> = Omit<oicq.EventMap<T>, 'system.login.qrcode' | 'system.login.slider' | 'system.login.device' | 'system.login.error'>
-
-type ExcludeLoginEventNames = keyof ExcludeLoginEvents
-
-export type PluginAllowedEvents<T = any> = {
-  [k in ExcludeLoginEventNames]: ExcludeLoginEvents<T>[k] | ExcludeLoginEvents<T>[k][]
+export type PluginEvents<T = any> = {
+  [k in keyof oicq.EventMap<T>]: oicq.EventMap<T>[k][]
 }
 
 export interface ManagerPlugin extends Plugin {
   error?: boolean,
-  listeners: Partial<PluginAllowedEvents>,
-  uninstall: (bot: Client) => void
+  listeners: Partial<PluginEvents>
 }
 
 export interface PluginList {
@@ -106,8 +102,23 @@ export type LoginResult = { type: 'qrcode', login: () => Promise<LoginResult>, i
 { type: 'ok' }
 
 export class Manager extends EventEmitter {
-  readonly clientList: ClientList = {}
+  readonly clientList: ClientList = new Proxy({}, {
+    defineProperty: (target, p, attributes) => {
+      forIn(this.pluginList, (plugin) => {
+        if (!plugin.error) {
+          try {
+            plugin.install(this.#protectClient(attributes.value, plugin.id))
+          } catch (error) {
+            this.pluginUninstall(attributes.value, plugin.id)
+            this.emit('plugin-install-error', plugin.id, error as Error)
+          }
+        }
+      })
+      return Reflect.defineProperty(target, p, attributes)
+    },
+  })
   readonly pluginList: PluginList = {}
+  // readonly EventsList: 
 
   constructor() {
     super();
@@ -115,7 +126,8 @@ export class Manager extends EventEmitter {
   /**创建一个实例并尝试登录 */
   login(account: ManagerAccount): Promise<LoginResult> {
     let bot = createClient(account.uin, account.oicqConfig)
-    return new Promise((resolve, reject) => {
+    this.clientList[bot.uin] ||= bot
+    return new Promise((resolve) => {
       bot.once('system.login.qrcode', e => {
         resolve({
           type: 'qrcode',
@@ -148,7 +160,6 @@ export class Manager extends EventEmitter {
           ...e
         })
       }).once('system.online', e => {
-        this.clientList[bot.uin] ||= bot
         resolve({
           type: 'ok',
         })
@@ -198,7 +209,6 @@ export class Manager extends EventEmitter {
           ...e
         })
       }).once('system.online', e => {
-        this.clientList[bot.uin] ||= bot
         resolve({
           type: 'ok',
         })
@@ -216,41 +226,88 @@ export class Manager extends EventEmitter {
       return await this.login({ uin: bot.uin, oicqConfig: bot.config })
     }
   }
-
-  use(plugin: string | Plugin): this {
-    if (typeof plugin == 'string') {
-      let module: Plugin
-      try {
-        module = require(plugin)
-      } catch (error) {
-        this.emit('plugin-install-error', plugin, error as Error)
-        return this
-      }
-      this.pluginList[plugin] ||= module
-    } else { //检查属性
-      if (plugin.id && plugin.label && !!plugin.install) {
-        this.pluginList[plugin.id] ||= plugin
-      } else {
-        this.emit('plugin-install-error', plugin.id, new Error('The provided plugin has incomplete properties'))
-      }
+  #protectClient(bot: Client, pluginId: string) {
+    const that = this
+    return new Proxy(bot, {
+      get(target, p: keyof Client, receiver) {
+        if (p == 'on') {
+          return new Proxy(target[p], {
+            apply(target, thisArg, argArray) {
+              if (typeof argArray[0] == 'symbol') return target.call(thisArg, argArray[0], argArray[1])
+              console.log('事件监听', argArray[0], pluginId);
+              that.#addListener(pluginId, argArray[0], argArray[1])
+              return target.call(thisArg, argArray[0], argArray[1])
+            },
+          })
+        } else {
+          return target[p]
+        }
+      },
+    })
+  }
+  #addListener(pluginId: string, eventName: keyof PluginEvents, listener: oicq.EventMap[keyof oicq.EventMap]) {
+    const l = this.pluginList[pluginId].listeners[eventName]
+    if (l) {
+      (this.pluginList[pluginId].listeners[eventName] as Function[]).push(listener)
+    } else {
+      (this.pluginList[pluginId].listeners[eventName] as Function[]) = [listener]
+    }
+  }
+  /** 使用插件 */
+  add(plugin: Plugin): this { //检查属性
+    if (plugin.id && plugin.label && !!plugin.install) {
+      let mp = this.#usePlugin(plugin)
+      this.#pluginInstall(mp)
+      this.pluginList[plugin.id] ||= mp
+    } else {
+      this.emit('plugin-install-error', plugin.id, new Error('The provided plugin has incomplete properties'))
     }
     return this
   }
 
   #usePlugin(plugin: Plugin): ManagerPlugin {
     return {
-      uninstall: function (bot) {
-        for (const key in this.listeners) {
-          const ls = this.listeners[key as ExcludeLoginEventNames]
-          if (ls instanceof Array) {
-            ls.forEach(e => bot.off(key, e))
-          } else {
-            bot.off(key, ls!)
-          }
-        }
-      },
       listeners: {},
       ...plugin
+    }
+  }
+  /** 从某个 bot 上卸载插件(取消插件添加的监听事件) */
+  pluginUninstall(bot: Client, pluginId: string) {
+    const plugin = this.pluginList[pluginId]
+    for (const key in plugin.listeners) {
+      const ls = plugin.listeners[key as keyof PluginEvents]
+      ls!.forEach(e => bot.off(key, e))
+      delete plugin.listeners[key as keyof PluginEvents]
+    }
+  }
+
+  #pluginInstall(plugin: ManagerPlugin) {
+    try {
+      if (plugin.enableList) {
+        plugin.enableList.forEach(e => {
+          if (this.clientList[e] && !plugin.error) {
+            plugin.install(this.#protectClient(this.clientList[e], plugin.id))
+          }
+        })
+      } else {
+        forIn(this.clientList, (e) => {
+          if (!plugin.error) {
+            plugin.install(this.#protectClient(e, plugin.id))
+          }
+        })
+      }
+    } catch (error) {
+      (plugin as Plugin & { error: boolean }).error = true
+      if (plugin.enableList) {
+        plugin.enableList.forEach(e => {
+          this.clientList[e] && this.pluginUninstall(this.clientList[e], plugin.id)
+        })
+      } else {
+        forIn(this.clientList, (e, i) => {
+          this.pluginUninstall(e, plugin.id)
+        })
+      }
+      this.emit('plugin-install-error', plugin.id, error as Error)
     }
   }
 
