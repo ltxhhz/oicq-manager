@@ -19,7 +19,7 @@ manager.login({
         ignore_self: false,
         // log_level: 'trace'
     }
-}).then(manager_1.Manager.auxiliaryVerification).then(e => {
+}).then(Manager.auxiliaryVerification).then(e => {
     console.log(e);
     if (e) {
         console.log(`当前第${Object.keys(manager.clientList).length}个实例已登录`);
