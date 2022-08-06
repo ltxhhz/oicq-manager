@@ -164,15 +164,11 @@ export class Manager extends EventEmitter {
     })
   }
   /**
-   * 传入一个bot实例，如果在线则返回true，否则尝试登录，返回 LoginResult
+   * 传入一个bot实例，但不尝试登录
    */
-  async addClient(bot: Client): Promise<true | LoginResult> {
-    if (bot.isOnline()) {
-      this.clientList[bot.uin] ||= bot
-      return true
-    } else {
-      return await this.login({ uin: bot.uin, oicqConfig: bot.config })
-    }
+  addClient(bot: Client) {
+    this.clientList[bot.uin] = bot
+    return this
   }
   #protectClient(bot: Client, pluginId: string) {
     const that = this
