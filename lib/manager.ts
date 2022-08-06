@@ -1,7 +1,6 @@
 import { EventEmitter } from "events";
 import { Client, createClient } from "oicq"
 import type oicq from 'oicq'
-import { EventMap } from "./events";
 import type { Plugin } from './plugin'
 import prompt from "prompt";
 import { forIn } from "lodash";
@@ -9,69 +8,18 @@ import { forIn } from "lodash";
 export interface ClientList {
   [uin: number]: Client
 }
-//#region 
-// export const PermissionList = {
-//   getCookies: '[敏感]获取cookie',
-
-// }
-
-// export enum Permissions {
-//   /** [所有权限] */
-//   all,
-//   /** [敏感]取Cookies */
-//   getCookies,
-//   getRecord,
-//   sendGroupMsg,
-//   sendDiscussMsg,
-//   sendPrivateMsg,
-//   sendLike,
-//   setGroupKick,
-//   setGroupBan,
-//   setGroupAdmin,
-//   setGroupWholeBan,
-//   setGroupAnonymousBan,
-//   setGroupAnonymous,
-//   setGroupCard,
-//   setGroupLeave,
-//   setGroupSpecialTitle,
-//   getGroupMemberInfo,
-//   getStrangerInfo,
-//   setDiscussLeave,
-//   setFriendAddRequest,
-//   setGroupAddRequest,
-//   getGroupMemberList,
-//   getGroupList,
-//   deleteMsg
-// }
-// [ // 应用权限（发布前请删除无用权限）
-//   20,  //[敏感]取Cookies    getCookies / getCsrfToken
-//   30,  //接收语音            getRecord
-//   101, //发送群消息            sendGroupMsg
-//   103, //发送讨论组消息        sendDiscussMsg
-//   106, //发送私聊消息        sendPrivateMsg
-//   110, //发送赞                sendLike
-//   120, //置群员移除            setGroupKick
-//   121, //置群员禁言            setGroupBan
-//   122, //置群管理员            setGroupAdmin
-//   123, //置全群禁言            setGroupWholeBan
-//   124, //置匿名群员禁言        setGroupAnonymousBan
-//   125, //置群匿名设置        setGroupAnonymous
-//   126, //置群成员名片        setGroupCard
-//   //127, //[敏感]置群退出        setGroupLeave
-//   128, //置群成员专属头衔    setGroupSpecialTitle
-//   130, //取群成员信息        getGroupMemberInfoV2 / getGroupMemberInfo
-//   131, //取陌生人信息        getStrangerInfo
-//   140, //置讨论组退出        setDiscussLeave
-//   150, //置好友添加请求        setFriendAddRequest
-//   151, //置群添加请求        setGroupAddRequest
-//   160, //取群成员列表        getGroupMemberList
-//   161, //取群列表            getGroupList
-//   180 //撤回消息            deleteMsg
-// ]
-//#endregion
 
 export type PluginEvents<T = any> = {
   [k in keyof oicq.EventMap<T>]: oicq.EventMap<T>[k][]
+}
+
+export interface EventMap<T = any> {
+  /**插件已安装到实例上 */
+  'plugin-installed': (this: T, bot: Client, plugin: string) => void
+  /** 只能捕获 install 方法运行错误，因为实例的监听事件的错误都会被 oicq 框架统一捕获并悄悄处理，如需查看可将 oicq 日志等级调整为 trace */
+  'plugin-install-error': (this: T, bot: Client | 'all', plugin: string, error: Error) => void
+  /** 插件从实例上卸载 */
+  'plugin-uninstalled': (this: T, bot: Client, plugin: string) => void
 }
 
 export interface ManagerPlugin extends Plugin {
@@ -110,7 +58,7 @@ export class Manager extends EventEmitter {
             plugin.install(this.#protectClient(attributes.value, plugin.id))
           } catch (error) {
             this.pluginUninstall(attributes.value, plugin.id)
-            this.emit('plugin-install-error', plugin.id, error as Error)
+            this.emit('plugin-install-error', attributes.value, plugin.id, error as Error)
           }
         }
       })
@@ -255,12 +203,12 @@ export class Manager extends EventEmitter {
   }
   /** 使用插件 */
   add(plugin: Plugin): this { //检查属性
-    if (plugin.id && plugin.label && !!plugin.install) {
+    if (Object.keys(this.pluginList).includes(plugin.id)) {
+      this.emit('plugin-install-error', 'all', plugin.id, new Error('The ID of the plug-in is the same as that of other plug-ins.'))
+    } else {
       let mp = this.#usePlugin(plugin)
       this.#pluginInstall(mp)
-      this.pluginList[plugin.id] ||= mp
-    } else {
-      this.emit('plugin-install-error', plugin.id, new Error('The provided plugin has incomplete properties'))
+      this.pluginList[plugin.id] = mp
     }
     return this
   }
@@ -279,6 +227,7 @@ export class Manager extends EventEmitter {
       ls!.forEach(e => bot.off(key, e))
       delete plugin.listeners[key as keyof PluginEvents]
     }
+    this.emit('plugin-uninstalled', bot, pluginId)
   }
 
   #pluginInstall(plugin: ManagerPlugin) {
@@ -307,7 +256,7 @@ export class Manager extends EventEmitter {
           this.pluginUninstall(e, plugin.id)
         })
       }
-      this.emit('plugin-install-error', plugin.id, error as Error)
+      this.emit('plugin-install-error', 'all', plugin.id, error as Error)
     }
   }
 

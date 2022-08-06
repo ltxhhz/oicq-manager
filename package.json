@@ -1,12 +1,15 @@
 {
   "name": "oicq-manager",
   "version": "1.0.0",
-  "description": "",
-  "main": "index.js",
+  "description": "oicq 实例管理工具",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
   },
-  "author": "",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/ltxhhz/oicq-manager"
+  },
+  "author": "ltxhhz",
   "license": "ISC",
   "devDependencies": {
     "@types/node": "^18.6.3",

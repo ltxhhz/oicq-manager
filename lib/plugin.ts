@@ -1,7 +1,7 @@
 import type { Client } from "oicq"
 
 export class Plugin {
-  /** 插件id，传入包名则为包名(因为npm包名不会重复) */
+  /** 插件id，不得和其他插件重复 */
   id: string
   /** 显示的名字 */
   label: string
