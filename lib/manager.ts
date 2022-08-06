@@ -214,6 +214,7 @@ export class Manager extends EventEmitter {
   }
 
   #usePlugin(plugin: Plugin): ManagerPlugin {
+    plugin.label ||= plugin.id
     return {
       listeners: {},
       ...plugin

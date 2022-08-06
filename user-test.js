@@ -1,6 +1,6 @@
-const { Manager, Plugin } = require("./build/lib");
+const { Manager } = require("./build/lib");
 const manager = new Manager();
-manager.add(new Plugin({
+manager.add({
     id: 'ltxhhz',
     label: '测试',
     install(bot) {
@@ -8,7 +8,7 @@ manager.add(new Plugin({
             console.log(`插件[${this.label}]收到了群`, `[${e.group_name}]${e.group_id} 的消息:`, e.message);
         });
     },
-}));
+});
 manager.on('plugin-install-error', (p, e) => {
     console.log(p, e);
 });
