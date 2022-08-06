@@ -1,4 +1,4 @@
 /node_modules
 test*.[t|j]s
 /data
-# /build
+/build
