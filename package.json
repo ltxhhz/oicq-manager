@@ -1,9 +1,10 @@
 {
   "name": "oicq-manager",
-  "version": "1.0.0",
+  "version": "1.0.2",
   "description": "oicq 实例管理工具",
   "scripts": {
-    "test": "node ./user-test.js"
+    "test": "node ./user-test.js",
+    "publish": "nrm use npm&&tsc&&npm publish"
   },
   "repository": {
     "type": "git",
