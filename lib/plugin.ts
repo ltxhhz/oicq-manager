@@ -1,4 +1,3 @@
-import type { Client } from "oicq"
 import type { Manager } from "./manager"
 
 export abstract class Plugin {
@@ -7,7 +6,7 @@ export abstract class Plugin {
   /** 显示的名字，不提供则默认为id */
   label?: string
   /** 插件安装函数 */
-  install: (manager: Manager) => void
+  install: (manager: Manager) => Promise<void>
   /** 在列表中 bot 上启用，不提供则全部启用 */
   enableList?: number[]
   constructor({ id, label, install, enableList }: Plugin) {

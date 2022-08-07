@@ -3,7 +3,7 @@ const manager = new Manager();
 manager.add({
   id: 'ltxhhz',
   label: '测试',
-  install(manager) {
+  async install(manager) {
     manager.clientOnce('message.group.normal', (e) => {
       console.log(`插件[${this.label}]收到了群`, `[${e.group_name}]${e.group_id} 的消息:`, e.message);
     })

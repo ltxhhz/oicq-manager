@@ -1,10 +1,10 @@
 import { EventEmitter } from "events";
 import { Client, createClient } from "oicq"
-import type oicq from 'oicq'
+import type * as oicq from 'oicq'
 import type { Plugin } from './plugin'
 import prompt from "prompt";
 import { forIn, remove } from "lodash";
-import log4js from 'log4js';
+import * as log4js from 'log4js';
 
 export interface ClientList {
   [uin: number]: Client
@@ -17,6 +17,10 @@ export interface EventMap<T = any> {
   'plugin-install-error': (this: T, plugin: string, error: Error) => void
   /** 插件从实例上卸载 */
   'plugin-uninstalled': (this: T, plugin: string) => void
+  /** 添加 bot 实例 */
+  'client-added': (this: T, uin: number) => void
+  /** 删除 bot 实例 */
+  'client-removed': (this: T, uin: number) => void
 }
 export type PluginEvents<T = any> = {
   [k in keyof oicq.EventMap<T>]: Array<oicq.EventMap<T>[k]>
@@ -87,6 +91,42 @@ export class Manager extends EventEmitter {
     },
   })
   private readonly _clientList: ClientList = {}
+  private readonly _installQueue: Plugin[] = new Proxy([] as Plugin[], {
+    set: (target, p, value, receiver) => {
+      let res = Reflect.set(target, p, value, receiver)
+      if (target.length && !this._installing) {
+        let ins = () => {
+          if (target[0]) {
+            let pluginId = target[0].id
+            this.logger.log(`[plugin:${pluginId}] 开始安装`)
+            target[0].install(new Proxy(this, {
+              get(target, p, receiver) {
+                if (p == '_pluginId') {
+                  return pluginId;
+                } else {
+                  return target[p as keyof Manager];
+                }
+              }
+            })).then(() => {
+              this.logger.log(`[plugin:${pluginId}] 安装完成`)
+            }).catch(err => {
+              this.logger.error(`[plugin:${pluginId}] 安装出错`, err)
+              this.emit('plugin-install-error', pluginId, err)
+            }).finally(() => {
+              target.shift()
+              ins()
+            })
+          } else {
+            this._installing = false
+          }
+        }
+        this._installing = true
+        ins()
+      }
+      return res
+    },
+  })
+  private _installing: boolean = false
   readonly pluginList: PluginList = {}
   readonly listenerList: ListenerList = {}
 
@@ -250,24 +290,12 @@ export class Manager extends EventEmitter {
       this.emit('plugin-install-error', plugin.id, new Error('插件id和已安装的插件id有重复'))
     } else {
       this.pluginList[plugin.id] = plugin
-      try {
-        this.logger.log(`[plugin:${plugin.id}] 安装`)
-        plugin.install(new Proxy(this, {
-          get(target, p, receiver) {
-            if (p == '_pluginId') {
-              return plugin.id;
-            } else {
-              return target[p as keyof Manager];
-            }
-          }
-        }))
-        this.logger.log(`[plugin:${plugin.id}] 安装完成`)
-      } catch (error) {
-        this.logger.error(`[plugin:${plugin.id}] 安装出错`, error)
-        this.emit('plugin-install-error', plugin.id, error as Error)
-      }
+      this._pluginInstall(plugin)
     }
     return this
+  }
+  private _pluginInstall(plugin: Plugin) {
+    this._installQueue.push(plugin)
   }
   /** 卸载插件(取消插件添加的监听事件) */
   pluginUninstall(pluginId: string) {
@@ -280,7 +308,7 @@ export class Manager extends EventEmitter {
     this.emit('plugin-uninstalled', pluginId)
   }
   /** 在指定实例上监听事件 */
-  clientOn<T extends keyof oicq.EventMap>(eventName: T, listener: oicq.EventMap[T], list: number[] | 'all' = 'all') {
+  clientOn<T extends keyof oicq.EventMap>(eventName: T, listener: oicq.EventMap[T], list: number[] | 'all' = this.pluginList[this._pluginId].enableList || 'all') {
     if (list == 'all') {
       forIn(this._clientList, e => {
         e.on(eventName, listener)
@@ -300,7 +328,7 @@ export class Manager extends EventEmitter {
     }
   }
   /** 取消监听指定实例上的事件 */
-  clientOff<T extends keyof oicq.EventMap>(eventName: T, listener: oicq.EventMap[T], list: number[] | 'all' = 'all') {
+  clientOff<T extends keyof oicq.EventMap>(eventName: T, listener: oicq.EventMap[T], list: number[] | 'all' = this.pluginList[this._pluginId].enableList || 'all') {
     if (list == 'all') {
       forIn(this._clientList, e => {
         e.off(eventName, listener)
@@ -320,7 +348,7 @@ export class Manager extends EventEmitter {
     }
   }
   /** 在指定实例上监听一次事件 */
-  clientOnce<T extends keyof oicq.EventMap>(eventName: T, listener: oicq.EventMap[T], list: number[] | 'all' = 'all') {
+  clientOnce<T extends keyof oicq.EventMap>(eventName: T, listener: oicq.EventMap[T], list: number[] | 'all' = this.pluginList[this._pluginId].enableList || 'all') {
     if (list == 'all') {
       forIn(this._clientList, e => {
         e.once(eventName, listener)
