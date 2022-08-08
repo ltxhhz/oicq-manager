@@ -98,7 +98,7 @@ export class Manager extends EventEmitter {
         let ins = () => {
           if (target[0]) {
             let pluginId = target[0].id
-            this.logger.log(`[plugin:${pluginId}] 开始安装`)
+            this.logger.info(`[plugin:${pluginId}] 开始安装`)
             target[0].install(new Proxy(this, {
               get(target, p, receiver) {
                 if (p == '_pluginId') {
@@ -108,7 +108,7 @@ export class Manager extends EventEmitter {
                 }
               }
             })).then(() => {
-              this.logger.log(`[plugin:${pluginId}] 安装完成`)
+              this.logger.info(`[plugin:${pluginId}] 安装完成`)
             }).catch(err => {
               this.logger.error(`[plugin:${pluginId}] 安装出错`, err)
               this.emit('plugin-install-error', pluginId, err)
