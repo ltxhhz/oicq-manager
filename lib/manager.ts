@@ -104,7 +104,7 @@ export class Manager extends EventEmitter {
                 if (p == '_pluginId') {
                   return pluginId;
                 } else {
-                  return target[p as keyof Manager];
+                  return Reflect.get(target, p, receiver)
                 }
               }
             })).then(() => {
