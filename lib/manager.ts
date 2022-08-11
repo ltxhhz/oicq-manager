@@ -90,6 +90,9 @@ export class Manager extends EventEmitter {
       return Reflect.deleteProperty(target, p)
     },
   })
+  private _loginList: {
+    [uin: number]: LoginResult
+  } = {}
   private readonly _clientList: ClientList = {}
   private readonly _installQueue: Plugin[] = new Proxy([] as Plugin[], {
     set: (target, p, value, receiver) => {
@@ -142,7 +145,7 @@ export class Manager extends EventEmitter {
     }
     let bot = createClient(account.uin, account.oicqConfig)
     this.clientList[bot.uin] = this._monitorClient(bot)
-    return new Promise((resolve) => {
+    return new Promise<LoginResult>((resolve) => {
       bot.once('system.login.qrcode', e => {
         resolve({
           type: 'qrcode',
@@ -179,7 +182,7 @@ export class Manager extends EventEmitter {
           type: 'ok',
         })
       }).login(account.pwd)
-    })
+    }).then((e) => this._loginList[account.uin] = e)
   }
   private _login(bot: Client, config?: LoginParams): Promise<LoginResult> {
     if (config?.slider) {
@@ -229,6 +232,12 @@ export class Manager extends EventEmitter {
         })
       })
     })
+  }
+  get loginList() {
+    return this._loginList
+  }
+  clearLoginList() {
+    this._loginList = {}
   }
   /**
    * 传入一个bot实例，但不尝试登录
