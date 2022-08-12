@@ -93,6 +93,7 @@ export class Manager extends EventEmitter {
   private _loginList: {
     [uin: number]: LoginResult
   } = {}
+  private _clearTimer?: NodeJS.Timeout
   private readonly _clientList: ClientList = {}
   private readonly _installQueue: Plugin[] = new Proxy([] as Plugin[], {
     set: (target, p, value, receiver) => {
@@ -237,7 +238,17 @@ export class Manager extends EventEmitter {
     return this._loginList
   }
   clearLoginList() {
-    this._loginList = {}
+    this._clearTimer = setTimeout(() => {
+      forIn(this._loginList, (e, i) => {
+        if (!this.clientList[Number(i)].isOnline()) {
+          delete this.clientList[Number(i)]
+        }
+      })
+      this._loginList = {}
+    }, 12e4);
+  }
+  cancelClearLoginList() {
+    clearTimeout(this._clearTimer)
   }
   /**
    * 传入一个bot实例，但不尝试登录
