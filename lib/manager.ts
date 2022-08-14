@@ -144,11 +144,22 @@ export class Manager extends EventEmitter {
   }
   /**创建一个实例并尝试登录 */
   async login(account: ManagerAccount): Promise<LoginResult> {
-    if (this.clientList.hasOwnProperty(account.uin)) {
-      throw new Error(`uin 为 ${account.uin} 的实例已经存在`)
+    let bot: Client
+    if (Object.hasOwn(this.clientList, account.uin)) {
+      if (this.clientList[account.uin].isOnline()) {
+        throw new Error(`uin 为 ${account.uin} 的实例已经存在且已登录`)
+      } else {
+        bot = this._clientList[account.uin]
+        if (account.oicqConfig) {
+          forIn(account.oicqConfig, (v, k) => {
+            (<any>bot.config)[k] = v
+          })
+        }
+      }
+    } else {
+      bot = createClient(account.uin, account.oicqConfig)
+      this.clientList[bot.uin] = this._monitorClient(bot)
     }
-    let bot = createClient(account.uin, account.oicqConfig)
-    this.clientList[bot.uin] = this._monitorClient(bot)
     const res = await new Promise<LoginResult>((resolve) => {
       bot.once('system.login.qrcode', e => {
         resolve({
@@ -262,7 +273,7 @@ export class Manager extends EventEmitter {
     } else {
       a()
     }
-  } 
+  }
   /** 取消清理未登录成功过的实例 */
   cancelClearLoginList() {
     clearTimeout(this._clearTimer)
