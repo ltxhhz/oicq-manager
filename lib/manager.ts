@@ -18,9 +18,9 @@ export interface EventMap<T = any> {
   /** 插件从实例上卸载 */
   'plugin-uninstalled': (this: T, plugin: string) => void
   /** 添加 bot 实例 */
-  'client-added': (this: T, uin: number) => void
+  'client-added': (this: T, client: Client) => void
   /** 删除 bot 实例 */
-  'client-removed': (this: T, uin: number) => void
+  'client-removed': (this: T, client: Client) => void
 }
 export type PluginEvents<T = any> = {
   [k in keyof oicq.EventMap<T>]: Array<oicq.EventMap<T>[k]>
@@ -73,6 +73,7 @@ export interface Config {
 export class Manager extends EventEmitter {
   readonly _pluginId: string = ''
   readonly logger: log4js.Logger
+  /** 实例列表 */
   readonly clientList: ClientList = new Proxy({}, {
     defineProperty: (target, p, attributes) => {//新增事件
       // Reflect.defineProperty(this._clientList, p, attributes)
@@ -83,10 +84,12 @@ export class Manager extends EventEmitter {
           })
         })
       })
+      this.emit('client-added', attributes.value)
       return Reflect.defineProperty(target, p, attributes)
     },
     deleteProperty: (target, p) => {
       Reflect.deleteProperty(this._clientList, p)
+      this.emit('client-removed', Reflect.get(target, p))
       return Reflect.deleteProperty(target, p)
     },
   })
@@ -140,50 +143,51 @@ export class Manager extends EventEmitter {
     this.logger.level = config.logLevel || log4js.levels.INFO
   }
   /**创建一个实例并尝试登录 */
-  login(account: ManagerAccount): Promise<LoginResult> {
+  async login(account: ManagerAccount): Promise<LoginResult> {
     if (this.clientList.hasOwnProperty(account.uin)) {
       throw new Error(`uin 为 ${account.uin} 的实例已经存在`)
     }
     let bot = createClient(account.uin, account.oicqConfig)
     this.clientList[bot.uin] = this._monitorClient(bot)
-    return new Promise<LoginResult>((resolve) => {
+    const res = await new Promise<LoginResult>((resolve) => {
       bot.once('system.login.qrcode', e => {
         resolve({
           type: 'qrcode',
           login: () => {
-            return this._login(bot)
+            return this._login(bot);
           },
           ...e
-        })
-      }).once('system.login.slider', e => {
+        });
+      }).once('system.login.slider', e_1 => {
         resolve({
           type: 'slider',
-          login: (e) => {
-            return this._login(bot, e)
+          login: (e_3) => {
+            return this._login(bot, e_3);
           },
-          ...e
-        })
-      }).once('system.login.device', e => {
+          ...e_1
+        });
+      }).once('system.login.device', e_4 => {
         resolve({
           type: 'device',
-          login: (e) => {
-            return this._login(bot, e)
+          login: (e_6) => {
+            return this._login(bot, e_6);
           },
           sendSms: bot.sendSmsCode,
-          ...e
-        })
-      }).once('system.login.error', e => {
-        console.log('登录错误', e);
+          ...e_4
+        });
+      }).once('system.login.error', e_7 => {
+        console.log('登录错误', e_7);
         resolve({
           type: 'error',
-          ...e
-        })
-      }).once('system.online', e => {
+          ...e_7
+        });
+      }).once('system.online', e_8 => {
         resolve({
           type: 'ok',
-        })
-      }).login(account.pwd)
-    }).then((e) => this._loginList[account.uin] = e)
+        });
+      }).login(account.pwd);
+    });
+    return this._loginList[account.uin] = res;
   }
   private _login(bot: Client, config?: LoginParams): Promise<LoginResult> {
     if (config?.slider) {
@@ -234,19 +238,32 @@ export class Manager extends EventEmitter {
       })
     })
   }
+  /** 获取登录中的实例列表 */
   get loginList() {
+    forIn(this._loginList, (e, i) => {
+      if (!this.clientList[Number(i)].isOnline()) {
+        delete this._loginList[Number(i)]
+      }
+    })
     return this._loginList
   }
-  clearLoginList() {
-    this._clearTimer = setTimeout(() => {
+  /** 清理掉未登录成功过的实例 */
+  clearLoginList(ms = 12e4) {
+    let a = () => {
       forIn(this._loginList, (e, i) => {
         if (!this.clientList[Number(i)].isOnline()) {
           delete this.clientList[Number(i)]
         }
       })
       this._loginList = {}
-    }, 12e4);
-  }
+    }
+    if (ms) {
+      this._clearTimer = setTimeout(a, ms);
+    } else {
+      a()
+    }
+  } 
+  /** 取消清理未登录成功过的实例 */
   cancelClearLoginList() {
     clearTimeout(this._clearTimer)
   }
