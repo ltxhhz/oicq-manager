@@ -1,5 +1,5 @@
 import { EventEmitter } from "events";
-import { Client, createClient } from "oicq"
+import { createClient } from "oicq"
 import type * as oicq from 'oicq'
 import type { Plugin } from './plugin'
 import prompt from "prompt";
@@ -7,7 +7,7 @@ import { forIn, remove } from "lodash";
 import * as log4js from 'log4js';
 
 export interface ClientList {
-  [uin: number]: Client
+  [uin: number]: oicq.Client
 }
 
 export interface EventMap<T = any> {
@@ -18,9 +18,9 @@ export interface EventMap<T = any> {
   /** 插件从实例上卸载 */
   'plugin-uninstalled': (this: T, plugin: string) => void
   /** 添加 bot 实例 */
-  'client-added': (this: T, client: Client) => void
+  'client-added': (this: T, client: oicq.Client) => void
   /** 删除 bot 实例 */
-  'client-removed': (this: T, client: Client) => void
+  'client-removed': (this: T, client: oicq.Client) => void
 }
 export type PluginEvents<T = any> = {
   [k in keyof oicq.EventMap<T>]: Array<oicq.EventMap<T>[k]>
@@ -144,7 +144,7 @@ export class Manager extends EventEmitter {
   }
   /**创建一个实例并尝试登录 */
   async login(account: ManagerAccount): Promise<LoginResult> {
-    let bot: Client
+    let bot: oicq.Client
     if (Object.hasOwn(this.clientList, account.uin)) {
       if (this.clientList[account.uin].isOnline()) {
         throw new Error(`uin 为 ${account.uin} 的实例已经存在且已登录`)
@@ -200,7 +200,7 @@ export class Manager extends EventEmitter {
     });
     return this._loginList[account.uin] = res;
   }
-  private _login(bot: Client, config?: LoginParams): Promise<LoginResult> {
+  private _login(bot: oicq.Client, config?: LoginParams): Promise<LoginResult> {
     if (config?.slider) {
       console.log('提交划动验证码');
       bot.submitSlider(config.slider)
@@ -281,18 +281,18 @@ export class Manager extends EventEmitter {
   /**
    * 传入一个bot实例，但不尝试登录
    */
-  addClient(bot: Client) {
+  addClient(bot: oicq.Client) {
     this.clientList[bot.uin] = this._monitorClient(bot)
     return this
   }
-  private _monitorClient(bot: Client) {
+  private _monitorClient(bot: oicq.Client) {
     const that = this
     that._clientList[bot.uin] = bot
     return new Proxy(bot, {
-      get(target, p: keyof Client, receiver) {
+      get(target, p: keyof oicq.Client, receiver) {
         if (p == 'on' || p == 'once' || p == 'addListener') {
           return new Proxy(target[p], {
-            apply(target, thisArg: Client, argArray: Parameters<Client['on' | 'once' | 'addListener']>) {
+            apply(target, thisArg: oicq.Client, argArray: Parameters<oicq.Client['on' | 'once' | 'addListener']>) {
               // if (typeof argArray[0] == 'symbol') return target.call(thisArg, argArray[0], argArray[1])
               that.logger.debug('事件监听', argArray[0], that._pluginId);
               that._addListener(that._pluginId, argArray[0] as keyof oicq.EventMap, {
@@ -307,7 +307,7 @@ export class Manager extends EventEmitter {
           })
         } else if (p == 'off' || p == 'removeListener') {
           return new Proxy(target[p], {
-            apply(target, thisArg: Client, argArray: Parameters<Client['on' | 'once' | 'addListener']>) {
+            apply(target, thisArg: oicq.Client, argArray: Parameters<oicq.Client['on' | 'once' | 'addListener']>) {
               // if (typeof argArray[0] == 'symbol') return target.call(thisArg, argArray[0], argArray[1])
               that.logger.debug('事件取消', argArray[0], that._pluginId);
               that._addListener(that._pluginId, argArray[0] as keyof oicq.EventMap, {
@@ -356,7 +356,7 @@ export class Manager extends EventEmitter {
     this.emit('plugin-uninstalled', pluginId)
   }
   /** 在指定实例上监听事件 */
-  clientOn<T extends keyof oicq.EventMap>(eventName: T, listener: oicq.EventMap[T], list: number[] | 'all' = this.pluginList[this._pluginId].enableList || 'all') {
+  clientOn<T extends keyof oicq.EventMap>(eventName: T, listener: oicq.EventMap<oicq.Client>[T], list: number[] | 'all' = this.pluginList[this._pluginId].enableList || 'all') {
     if (list == 'all') {
       forIn(this._clientList, e => {
         e.on(eventName, listener)
@@ -435,7 +435,7 @@ export class Manager extends EventEmitter {
           return await e.login().then(e => Manager.auxiliaryVerification(e))
         }
       case 'qrcode':
-        ({ login } = await prompt.get({ name: 'login', description: '扫码后按 Enter 继续登录' }));
+        ({ login } = await prompt.get({ name: 'login', description: '扫码后按 Enter 继续登录(需要重新获取二维码也按)' }));
         return await e.login().then(e => Manager.auxiliaryVerification(e))
       case 'slider':
         ({ login } = await prompt.get({ name: 'login', description: '输入滑动验证码的 ticket 继续登录', required: true }));
