@@ -21,6 +21,7 @@ export interface EventMap<T = any> {
   'client-added': (this: T, client: oicq.Client) => void
   /** 删除 bot 实例 */
   'client-removed': (this: T, client: oicq.Client) => void
+
 }
 export type PluginEvents<T = any> = {
   [k in keyof oicq.EventMap<T>]: Array<oicq.EventMap<T>[k]>
@@ -102,27 +103,29 @@ export class Manager extends EventEmitter {
     set: (target, p, value, receiver) => {
       let res = Reflect.set(target, p, value, receiver)
       if (target.length && !this._installing) {
-        let ins = () => {
+        const ins = async () => {
           if (target[0]) {
-            let pluginId = target[0].id
+            const pluginId = target[0].id
             this.logger.info(`[plugin:${pluginId}] 开始安装`)
-            target[0].install(new Proxy(this, {
-              get(target, p, receiver) {
-                if (p == '_pluginId') {
-                  return pluginId;
-                } else {
-                  return Reflect.get(target, p, receiver)
+            try {
+              await target[0].install(new Proxy(this, {
+                get(target, p, receiver) {
+                  if (p == '_pluginId') {
+                    return pluginId;
+                  } else {
+                    return Reflect.get(target, p, receiver)
+                  }
                 }
-              }
-            })).then(() => {
+              }))
               this.logger.info(`[plugin:${pluginId}] 安装完成`)
-            }).catch(err => {
+              this.emit('plugin-installed', pluginId)
+            } catch (err) {
               this.logger.error(`[plugin:${pluginId}] 安装出错`, err)
-              this.emit('plugin-install-error', pluginId, err)
-            }).finally(() => {
+              this.emit('plugin-install-error', pluginId, <Error>err)
+            } finally {
               target.shift()
-              ins()
-            })
+              await ins()
+            }
           } else {
             this._installing = false
           }
@@ -374,6 +377,7 @@ export class Manager extends EventEmitter {
         listener
       })
     }
+    return this
   }
   /** 取消监听指定实例上的事件 */
   clientOff<T extends keyof oicq.EventMap>(eventName: T, listener: oicq.EventMap[T], list: number[] | 'all' = this.pluginList[this._pluginId].enableList || 'all') {
@@ -394,6 +398,7 @@ export class Manager extends EventEmitter {
         listener
       })
     }
+    return this
   }
   /** 在指定实例上监听一次事件 */
   clientOnce<T extends keyof oicq.EventMap>(eventName: T, listener: oicq.EventMap[T], list: number[] | 'all' = this.pluginList[this._pluginId].enableList || 'all') {
@@ -416,6 +421,7 @@ export class Manager extends EventEmitter {
         listener
       })
     }
+    return this
   }
 
   /** 辅助登录函数 */
@@ -451,5 +457,6 @@ export class Manager extends EventEmitter {
 
 export interface Manager {
   on<T extends keyof EventMap>(event: T, listener: EventMap<this>[T]): this
+  once<T extends keyof EventMap>(event: T, listener: EventMap<this>[T]): this
   emit<T extends keyof EventMap>(eventName: T, ...args: Parameters<EventMap[T]>): boolean
 }
