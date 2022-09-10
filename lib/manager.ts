@@ -2,7 +2,7 @@ import { EventEmitter } from "events";
 import { createClient } from "oicq"
 import type * as oicq from 'oicq'
 import type { Plugin } from './plugin'
-import prompt from "prompt";
+import prompt, { RevalidatorSchema } from "prompt";
 import { forIn, remove } from "lodash";
 import * as log4js from 'log4js';
 
@@ -148,7 +148,7 @@ export class Manager extends EventEmitter {
   /**创建一个实例并尝试登录 */
   async login(account: ManagerAccount): Promise<LoginResult> {
     let bot: oicq.Client
-    if (Object.hasOwn(this.clientList, account.uin)) {
+    if (Object.hasOwnProperty.call(this.clientList, account.uin)) {
       if (this.clientList[account.uin].isOnline()) {
         throw new Error(`uin 为 ${account.uin} 的实例已经存在且已登录`)
       } else {
@@ -356,7 +356,10 @@ export class Manager extends EventEmitter {
       })
     })
     delete this.listenerList[pluginId]
-    this.emit('plugin-uninstalled', pluginId)
+      ; (async () => {
+        await this.pluginList[pluginId].uninstall?.()
+        this.emit('plugin-uninstalled', pluginId)
+      })()
   }
   /** 在指定实例上监听事件 */
   clientOn<T extends keyof oicq.EventMap>(eventName: T, listener: oicq.EventMap<oicq.Client>[T], list: number[] | 'all' = this.pluginList[this._pluginId].enableList || 'all') {
@@ -427,7 +430,7 @@ export class Manager extends EventEmitter {
   /** 辅助登录函数 */
   static async auxiliaryVerification(e: LoginResult): Promise<boolean> {
     prompt.start()
-    let login: string
+    let login: string | RevalidatorSchema
     switch (e.type) {
       case 'ok':
         return true
@@ -445,7 +448,7 @@ export class Manager extends EventEmitter {
         return await e.login().then(e => Manager.auxiliaryVerification(e))
       case 'slider':
         ({ login } = await prompt.get({ name: 'login', description: '输入滑动验证码的 ticket 继续登录', required: true }));
-        return await e.login({ slider: login }).then(e => Manager.auxiliaryVerification(e))
+        return await e.login({ slider: <string>login }).then(e => Manager.auxiliaryVerification(e))
       case 'error':
         console.log('未知的登录错误', e);
         return false

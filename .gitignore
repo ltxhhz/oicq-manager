@@ -2,3 +2,5 @@
 test*.[t|j]s
 /data
 /build
+lib/**/*.d.ts
+lib/**/*.js

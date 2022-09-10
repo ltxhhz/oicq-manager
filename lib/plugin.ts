@@ -2,17 +2,12 @@ import type { Manager } from "./manager"
 
 export abstract class Plugin {
   /** 插件id，不得和其他插件重复 */
-  id: string
+  abstract id: string
   /** 显示的名字，不提供则默认为id */
-  label?: string
+  abstract label?: string
   /** 插件安装函数 */
-  install: (manager: Manager) => Promise<void>
+  abstract install: (manager: Manager) => Promise<void>
+  abstract uninstall?: () => Promise<void>
   /** 在列表中 bot 上启用，不提供则全部启用 */
-  enableList?: number[]
-  constructor({ id, label, install, enableList }: Plugin) {
-    this.id = id
-    this.label = label || id
-    this.install = install
-    this.enableList = enableList
-  }
+  abstract enableList?: number[]
 }
